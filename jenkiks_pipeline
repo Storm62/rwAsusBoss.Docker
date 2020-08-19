@@ -1,0 +1,58 @@
+pipeline {
+    agent { 
+        label 'master'
+        }
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '2', artifactNumToKeepStr: '2'))
+        timestamps()
+    }
+    stages {
+        stage("docker login") {
+            steps {
+                echo " ============== docker login =================="
+                withCredentials([usernamePassword(credentialsId: 'DockerHub_Storm62', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
+                    sh """
+                    docker login -u $USERNAME -p $PASSWORD
+                    """
+                }
+            }
+        }
+        stage("create docker image") {
+            steps {
+                echo " ============== start building image =================="
+                	sh """  docker cp fiksik:/usr/local/tomcat/tasks.json /home/rw-srv/rwAsusBoss/tasks.json
+                	        cd /home/rw-srv/rwAsusBoss/
+                            docker build -t storm62/fiksik:latest .
+                	   """    
+            }
+        }
+        stage("docker push") {
+            steps {
+                echo " ============== start pushing image =================="
+                sh '''
+                docker push storm62/fiksik:latest
+                '''
+            }
+        }
+        stage("docker stop old container") {
+            steps {
+                echo " ============== stop docker old container =================="
+                sh label: '', script: 'docker stop $(docker ps -a -q)' 
+            }
+        }
+        stage("docker run new container") {
+            steps {
+                echo " ============== start docker new container =================="
+                sh label: '', script: 'docker run --rm -ti -e TZ=Europe/Moscow --name=fiksik -d -p 8080:8080 storm62/fiksik'
+            }                
+        }
+        stage("docker clean") {
+            steps {
+                echo " ============== start docker clean =================="
+                    sh """ docker container prune -f
+                            docker image prune -a -f
+                       """
+            }                
+        }
+    }
+}
